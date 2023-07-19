@@ -9,7 +9,7 @@ private const val LOWER_CASE_HEX_DIGITS = "0123456789abcdef"
 private const val UPPER_CASE_HEX_DIGITS = "0123456789ABCDEF"
 
 // case-insensitive parsing
-private val HEX_DIGITS_TO_DECIMAL = IntArray(128) { -1 }.apply {
+private val HEX_DIGITS_TO_DECIMAL = IntArray(256) { -1 }.apply {
     LOWER_CASE_HEX_DIGITS.forEachIndexed { index, char -> this[char.code] = index }
     UPPER_CASE_HEX_DIGITS.forEachIndexed { index, char -> this[char.code] = index }
 }
@@ -61,8 +61,13 @@ public fun ByteArray.toHexString(
     val byteSeparator = bytesFormat.byteSeparator
     val groupSeparator = bytesFormat.groupSeparator
 
+    // Optimize for formats with unspecified bytesPerLine and bytesPerGroup
+    if (bytesPerLine == Int.MAX_VALUE && bytesPerGroup == Int.MAX_VALUE) {
+        return toHexString(startIndex, endIndex, bytePrefix, byteSuffix, byteSeparator, digits)
+    }
+
     val formatLength = formattedStringLength(
-        totalBytes = endIndex - startIndex,
+        numberOfBytes = endIndex - startIndex,
         bytesPerLine,
         bytesPerGroup,
         groupSeparator.length,
@@ -74,38 +79,102 @@ public fun ByteArray.toHexString(
     var indexInLine = 0
     var indexInGroup = 0
 
-    return buildString(formatLength) {
-        for (i in startIndex until endIndex) {
-            val byte = this@toHexString[i].toInt() and 0xFF
+    val charArray = CharArray(formatLength)
+    var charIndex = 0
 
-            if (indexInLine == bytesPerLine) {
-                append('\n')
-                indexInLine = 0
-                indexInGroup = 0
-            } else if (indexInGroup == bytesPerGroup) {
-                append(groupSeparator)
-                indexInGroup = 0
-            }
-            if (indexInGroup != 0) {
-                append(byteSeparator)
-            }
-
-            append(bytePrefix)
-            append(digits[byte shr 4])
-            append(digits[byte and 0xF])
-            append(byteSuffix)
-
-            indexInGroup += 1
-            indexInLine += 1
+    for (i in startIndex until endIndex) {
+        if (indexInLine == bytesPerLine) {
+            charArray[charIndex++] = '\n'
+            indexInLine = 0
+            indexInGroup = 0
+        } else if (indexInGroup == bytesPerGroup) {
+            charIndex = groupSeparator.toCharArrayIfNotEmpty(charArray, charIndex)
+            indexInGroup = 0
+        }
+        if (indexInGroup != 0) {
+            charIndex = byteSeparator.toCharArrayIfNotEmpty(charArray, charIndex)
         }
 
-        check(formatLength == length)
+        charIndex = formatByteAt(i, bytePrefix, byteSuffix, digits, charArray, charIndex)
+
+        indexInGroup += 1
+        indexInLine += 1
     }
+
+    check(charIndex == formatLength)
+    return charArray.concatToString()
+}
+
+private fun ByteArray.toHexString(
+    startIndex: Int,
+    endIndex: Int,
+    bytePrefix: String,
+    byteSuffix: String,
+    byteSeparator: String,
+    digits: String
+): String {
+    val numberOfBytes = endIndex - startIndex
+    val byteSeparatorLength = byteSeparator.length
+    val bytePrefixLength = bytePrefix.length
+    val byteSuffixLength = byteSuffix.length
+    val charsPerByte = 2L + bytePrefixLength + byteSuffixLength + byteSeparatorLength
+    val formatLength = numberOfBytes * charsPerByte - byteSeparatorLength
+    val charArray = CharArray(checkFormatLength(formatLength))
+
+    var charIndex = 0
+
+    if (bytePrefixLength == 0 && byteSuffixLength == 0) {
+        if (byteSeparatorLength == 0) {
+            for (i in startIndex until endIndex) {
+                charIndex = formatByteAt(i, digits, charArray, charIndex)
+            }
+            return charArray.concatToString()
+        } else if (byteSeparatorLength == 1) {
+            val byteSeparatorChar = byteSeparator[0]
+            charIndex = formatByteAt(startIndex, digits, charArray, charIndex)
+            for (i in startIndex + 1 until endIndex) {
+                charArray[charIndex++] = byteSeparatorChar
+                charIndex = formatByteAt(i, digits, charArray, charIndex)
+            }
+            return charArray.concatToString()
+        }
+    }
+
+    charIndex = formatByteAt(startIndex, bytePrefix, byteSuffix, digits, charArray, charIndex)
+    for (i in startIndex + 1 until endIndex) {
+        charIndex = byteSeparator.toCharArrayIfNotEmpty(charArray, charIndex)
+        charIndex = formatByteAt(i, bytePrefix, byteSuffix, digits, charArray, charIndex)
+    }
+
+    return charArray.concatToString()
+}
+
+private fun ByteArray.formatByteAt(
+    index: Int,
+    bytePrefix: String,
+    byteSuffix: String,
+    digits: String,
+    destination: CharArray,
+    destinationOffset: Int
+): Int {
+    var i = bytePrefix.toCharArrayIfNotEmpty(destination, destinationOffset)
+    i = formatByteAt(index, digits, destination, i)
+    return byteSuffix.toCharArrayIfNotEmpty(destination, i)
+}
+
+@Suppress("NOTHING_TO_INLINE")
+private inline fun ByteArray.formatByteAt(index: Int, digits: String, destination: CharArray, destinationOffset: Int): Int {
+    val byte = this[index].toInt() and 0xFF
+    val high = byte shr 4
+    val low = byte and 0xF
+    destination[destinationOffset] = digits[high]
+    destination[destinationOffset + 1] = digits[low]
+    return destinationOffset + 2
 }
 
 // Declared internal for testing
 internal fun formattedStringLength(
-    totalBytes: Int,
+    numberOfBytes: Int,
     bytesPerLine: Int,
     bytesPerGroup: Int,
     groupSeparatorLength: Int,
@@ -113,34 +182,37 @@ internal fun formattedStringLength(
     bytePrefixLength: Int,
     byteSuffixLength: Int
 ): Int {
-    require(totalBytes > 0)
+    require(numberOfBytes > 0)
     // By contract bytesPerLine and bytesPerGroup are > 0
 
-    val lineSeparators = (totalBytes - 1) / bytesPerLine
+    val lineSeparators = (numberOfBytes - 1) / bytesPerLine
     val groupSeparators = run {
         val groupSeparatorsPerLine = (bytesPerLine - 1) / bytesPerGroup
-        val bytesInLastLine = (totalBytes % bytesPerLine).let { if (it == 0) bytesPerLine else it }
+        val bytesInLastLine = (numberOfBytes % bytesPerLine).let { if (it == 0) bytesPerLine else it }
         val groupSeparatorsInLastLine = (bytesInLastLine - 1) / bytesPerGroup
         lineSeparators * groupSeparatorsPerLine + groupSeparatorsInLastLine
     }
-    val byteSeparators = totalBytes - 1 - lineSeparators - groupSeparators
+    val byteSeparators = numberOfBytes - 1 - lineSeparators - groupSeparators
 
-    // The max totalLength is achieved when
-    // totalBytes, bytePrefix/Suffix/Separator.length = Int.MAX_VALUE.
+    // The max formatLength is achieved when
+    // numberOfBytes, bytePrefix/Suffix/Separator.length = Int.MAX_VALUE.
     // The result is 3 * Int.MAX_VALUE * Int.MAX_VALUE + Int.MAX_VALUE,
     // which is > Long.MAX_VALUE, but < ULong.MAX_VALUE.
 
-    val totalLength: Long = lineSeparators.toLong() /* * lineSeparator.length = 1 */ +
+    val formatLength: Long = lineSeparators.toLong() /* * lineSeparator.length = 1 */ +
             groupSeparators.toLong() * groupSeparatorLength.toLong() +
             byteSeparators.toLong() * byteSeparatorLength.toLong() +
-            totalBytes.toLong() * (bytePrefixLength.toLong() + 2L + byteSuffixLength.toLong())
+            numberOfBytes.toLong() * (bytePrefixLength.toLong() + 2L + byteSuffixLength.toLong())
 
-    if (totalLength !in 0..Int.MAX_VALUE) {
+    return checkFormatLength(formatLength)
+}
+
+private fun checkFormatLength(formatLength: Long): Int {
+    if (formatLength !in 0..Int.MAX_VALUE) {
         // TODO: Common OutOfMemoryError?
-        throw IllegalArgumentException("The resulting string length is too big: ${totalLength.toULong()}")
+        throw IllegalArgumentException("The resulting string length is too big: ${formatLength.toULong()}")
     }
-
-    return totalLength.toInt()
+    return formatLength.toInt()
 }
 
 /**
@@ -190,6 +262,11 @@ private fun String.hexToByteArray(
     val byteSeparator = bytesFormat.byteSeparator
     val groupSeparator = bytesFormat.groupSeparator
 
+    // Optimize for formats with unspecified bytesPerLine and bytesPerGroup
+    if (bytesPerLine == Int.MAX_VALUE && bytesPerGroup == Int.MAX_VALUE) {
+        hexToByteArray(startIndex, endIndex, bytePrefix, byteSuffix, byteSeparator)?.let { return it }
+    }
+
     val resultCapacity = parsedByteArrayMaxSize(
         stringLength = endIndex - startIndex,
         bytesPerLine,
@@ -221,15 +298,76 @@ private fun String.hexToByteArray(
         indexInGroup += 1
 
         i = checkContainsAt(bytePrefix, i, endIndex, "byte prefix")
-
-        checkHexLength(i, (i + 2).coerceAtMost(endIndex), maxDigits = 2, requireMaxLength = true)
-
-        result[byteIndex++] = ((decimalFromHexDigitAt(i++) shl 4) or decimalFromHexDigitAt(i++)).toByte()
-
-        i = checkContainsAt(byteSuffix, i, endIndex, "byte suffix")
+        if (endIndex - 2 < i) {
+            throwInvalidNumberOfDigits(i, endIndex, maxDigits = 2, requireMaxLength = true)
+        }
+        result[byteIndex++] = parseByteAt(i)
+        i = checkContainsAt(byteSuffix, i + 2, endIndex, "byte suffix")
     }
 
     return if (byteIndex == result.size) result else result.copyOf(byteIndex)
+}
+
+private fun String.hexToByteArray(
+    startIndex: Int,
+    endIndex: Int,
+    bytePrefix: String,
+    byteSuffix: String,
+    byteSeparator: String
+): ByteArray? {
+    val numberOfChars = (endIndex - startIndex).toLong()
+    val byteSeparatorLength = byteSeparator.length
+    val bytePrefixLength = bytePrefix.length
+    val byteSuffixLength = byteSuffix.length
+    val charsPerByte = 2L + bytePrefixLength + byteSuffixLength + byteSeparatorLength
+    val numberOfBytes = ((numberOfChars + byteSeparatorLength) / charsPerByte).toInt()
+
+    // Go to the default implementation when the string length doesn't match
+    if (numberOfBytes * charsPerByte - byteSeparatorLength != numberOfChars) {
+        return null
+    }
+
+    val result = ByteArray(numberOfBytes)
+    var i = startIndex
+
+    if (bytePrefixLength == 0 && byteSuffixLength == 0) {
+        if (byteSeparatorLength == 0) {
+            for (index in 0 until numberOfBytes) {
+                result[index] = parseByteAt(i)
+                i += 2
+            }
+            return result
+        } else if (byteSeparatorLength == 1) {
+            val byteSeparatorChar = byteSeparator[0]
+            result[0] = parseByteAt(i)
+            i += 2
+            for (index in 1 until numberOfBytes) {
+                if (this[i] != byteSeparatorChar) {
+                    checkContainsAt(byteSeparator, i, endIndex, "byte separator")
+                }
+                result[index] = parseByteAt(i + 1)
+                i += 3
+            }
+            return result
+        }
+    }
+
+    i = checkContainsAt(bytePrefix, i, endIndex, "byte prefix")
+    val between = byteSuffix + byteSeparator + bytePrefix
+    for (index in 0 until numberOfBytes - 1) {
+        result[index] = parseByteAt(i)
+        i = checkContainsAt(between, i + 2, endIndex, "byte suffix + byte separator + byte prefix")
+    }
+    result[numberOfBytes - 1] = parseByteAt(i)
+    checkContainsAt(byteSuffix, i + 2, endIndex, "byte suffix")
+
+    return result
+}
+
+private fun String.parseByteAt(index: Int): Byte {
+    val high = decimalFromHexDigitAt(index)
+    val low = decimalFromHexDigitAt(index + 1)
+    return ((high shl 4) or low).toByte()
 }
 
 // Declared internal for testing
@@ -477,27 +615,51 @@ private fun Long.toHexStringImpl(format: HexFormat, bits: Int): String {
 
     val digits = if (format.upperCase) UPPER_CASE_HEX_DIGITS else LOWER_CASE_HEX_DIGITS
     val value = this
+    val numberOfHexDigits = bits shr 2
 
     val prefix = format.number.prefix
     val suffix = format.number.suffix
-    val formatLength = prefix.length + (bits shr 2) + suffix.length
     var removeZeros = format.number.removeLeadingZeros
 
-    return buildString(formatLength) {
-        append(prefix)
-
-        var shift = bits
-        while (shift > 0) {
-            shift -= 4
+    // Optimize for the default format
+    if (prefix.isEmpty() && suffix.isEmpty() && !removeZeros) {
+        val charArray = CharArray(numberOfHexDigits)
+        var shift = bits - 4
+        for (i in 0 until numberOfHexDigits) {
             val decimal = ((value shr shift) and 0xF).toInt()
-            removeZeros = removeZeros && decimal == 0 && shift > 0
-            if (!removeZeros) {
-                append(digits[decimal])
-            }
+            charArray[i] = digits[decimal]
+            shift -= 4
         }
-
-        append(suffix)
+        return charArray.concatToString()
     }
+
+    val formatLength = prefix.length.toLong() + numberOfHexDigits + suffix.length
+    val charArray = CharArray(checkFormatLength(formatLength))
+
+    var i = prefix.toCharArrayIfNotEmpty(charArray, 0)
+
+    var shift = bits
+    repeat(numberOfHexDigits) {
+        shift -= 4
+        val decimal = ((value shr shift) and 0xF).toInt()
+        removeZeros = removeZeros && decimal == 0 && shift > 0
+        if (!removeZeros) {
+            charArray[i++] = digits[decimal]
+        }
+    }
+
+    i = suffix.toCharArrayIfNotEmpty(charArray, i)
+
+    return if (i == charArray.size) charArray.concatToString() else charArray.concatToString(endIndex = i)
+}
+
+private fun String.toCharArrayIfNotEmpty(destination: CharArray, destinationOffset: Int): Int {
+    when (length) {
+        0 -> { /* do nothing */ }
+        1 -> destination[destinationOffset] = this[0]
+        else -> toCharArray(destination, destinationOffset)
+    }
+    return destinationOffset + length
 }
 
 private fun String.hexToLongImpl(startIndex: Int = 0, endIndex: Int = length, format: HexFormat, maxDigits: Int): Long {
@@ -506,7 +668,7 @@ private fun String.hexToLongImpl(startIndex: Int = 0, endIndex: Int = length, fo
     val prefix = format.number.prefix
     val suffix = format.number.suffix
 
-    if (prefix.length + suffix.length >= endIndex - startIndex) {
+    if (endIndex - startIndex - prefix.length <= suffix.length) {
         throw NumberFormatException(
             "Expected a hexadecimal number with prefix \"$prefix\" and suffix \"$suffix\", but was ${substring(startIndex, endIndex)}"
         )
@@ -516,7 +678,9 @@ private fun String.hexToLongImpl(startIndex: Int = 0, endIndex: Int = length, fo
     val digitsEndIndex = endIndex - suffix.length
     checkContainsAt(suffix, digitsEndIndex, endIndex, "suffix")
 
-    checkHexLength(digitsStartIndex, digitsEndIndex, maxDigits, requireMaxLength = false)
+    if (digitsEndIndex - digitsStartIndex > maxDigits) {
+        throwInvalidNumberOfDigits(digitsStartIndex, digitsEndIndex, maxDigits, requireMaxLength = false)
+    }
 
     var result = 0L
     for (i in digitsStartIndex until digitsEndIndex) {
@@ -525,34 +689,34 @@ private fun String.hexToLongImpl(startIndex: Int = 0, endIndex: Int = length, fo
     return result
 }
 
-private fun String.checkContainsAt(part: String, index: Int, endIndex: Int, partName: String): Int {
-    val end = index + part.length
-    if (end > endIndex || !regionMatches(index, part, 0, part.length, ignoreCase = true)) {
-        throw NumberFormatException(
-            "Expected $partName \"$part\" at index $index, but was ${this.substring(index, end.coerceAtMost(endIndex))}"
-        )
+@Suppress("NOTHING_TO_INLINE")
+private inline fun String.checkContainsAt(part: String, index: Int, endIndex: Int, partName: String): Int {
+    val partLength = part.length
+    if (partLength == 0) return index
+    val end = index + partLength
+    if (regionMatches(index, part, 0, partLength, ignoreCase = true)) {
+        return end
     }
-    return end
+    throw NumberFormatException(
+        "Expected $partName \"$part\" at index $index, but was ${this.substring(index, end.coerceAtMost(endIndex))}"
+    )
 }
 
-private fun String.checkHexLength(startIndex: Int, endIndex: Int, maxDigits: Int, requireMaxLength: Boolean) {
-    val digitsLength = endIndex - startIndex
-    val isCorrectLength = if (requireMaxLength) digitsLength == maxDigits else digitsLength <= maxDigits
-    if (!isCorrectLength) {
-        val specifier = if (requireMaxLength) "exactly" else "at most"
-        val substring = substring(startIndex, endIndex)
-        throw NumberFormatException(
-            "Expected $specifier $maxDigits hexadecimal digits at index $startIndex, but was $substring of length $digitsLength"
-        )
-    }
+private fun String.throwInvalidNumberOfDigits(startIndex: Int, endIndex: Int, maxDigits: Int, requireMaxLength: Boolean) {
+    val specifier = if (requireMaxLength) "exactly" else "at most"
+    val substring = substring(startIndex, endIndex)
+    throw NumberFormatException(
+        "Expected $specifier $maxDigits hexadecimal digits at index $startIndex, but was $substring of length ${endIndex - startIndex}"
+    )
 }
 
-private fun String.decimalFromHexDigitAt(index: Int): Int {
+@Suppress("NOTHING_TO_INLINE")
+private inline fun String.decimalFromHexDigitAt(index: Int): Int {
     val code = this[index].code
-    if (code > 127 || HEX_DIGITS_TO_DECIMAL[code] < 0) {
-        throw NumberFormatException("Expected a hexadecimal digit at index $index, but was ${this[index]}")
+    if (code ushr 8 == 0 && HEX_DIGITS_TO_DECIMAL[code] >= 0) {
+        return HEX_DIGITS_TO_DECIMAL[code]
     }
-    return HEX_DIGITS_TO_DECIMAL[code]
+    throw NumberFormatException("Expected a hexadecimal digit at index $index, but was ${this[index]}")
 }
 
 
