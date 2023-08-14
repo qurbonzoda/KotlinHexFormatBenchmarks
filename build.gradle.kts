@@ -33,22 +33,25 @@ benchmark {
             iterations = 10
             iterationTime = 1
             iterationTimeUnit = "s"
+            reportFormat = "text"
         }
 
-        register("byteArray") {
-            include("ByteArrayFormattingBenchmark")
+        register("byteArrayDefault") {
+            include("ByteArrayDefaultFormattingBenchmark")
             warmups = 10
             iterations = 10
             iterationTime = 1
             iterationTimeUnit = "s"
+            reportFormat = "text"
         }
 
-        register("complexByteArray") {
-            include("ComplexByteArrayFormattingBenchmark")
+        register("byteArrayComplex") {
+            include("ByteArrayComplexFormattingBenchmark")
             warmups = 10
             iterations = 10
             iterationTime = 1
             iterationTimeUnit = "s"
+            reportFormat = "text"
         }
     }
     targets {

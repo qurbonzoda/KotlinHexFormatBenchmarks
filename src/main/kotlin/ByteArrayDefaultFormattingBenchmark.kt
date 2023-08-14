@@ -14,11 +14,11 @@ import kotlinx.benchmark.Setup
 import java.util.HexFormat as JHexFormat
 
 @State(Scope.Benchmark)
-open class ByteArrayFormattingBenchmark {
-    private val kotlinHexFormat = HexFormat {}
-    private val jdk17HexFormat = JHexFormat.of()
+open class ByteArrayDefaultFormattingBenchmark {
+    private val javaHexFormat = JHexFormat.of()
+    private val kotlinHexFormat = HexFormat.Default
 
-    @Param("1", "4", "8", "32", "128")
+    @Param("1", "4", "8", "32", "128", "10000", "100000")
     var size: Int = 0
 
     private var array = ByteArray(0)
@@ -31,14 +31,14 @@ open class ByteArrayFormattingBenchmark {
     }
 
     @Benchmark
-    fun array2hexBaseline() = jdk17HexFormat.formatHex(array)
+    fun formatJava() = javaHexFormat.formatHex(array)
 
     @Benchmark
-    fun array2hexHexFormat() = array.toHexString(kotlinHexFormat)
+    fun formatKotlin() = array.toHexString(kotlinHexFormat)
 
     @Benchmark
-    fun hex2arrayBaseline() = jdk17HexFormat.parseHex(hexString)
+    fun parseJava() = javaHexFormat.parseHex(hexString)
 
     @Benchmark
-    fun hex2arrayHexFormat() = hexString.hexToByteArray(kotlinHexFormat)
+    fun parseKotlin() = hexString.hexToByteArray(kotlinHexFormat)
 }
