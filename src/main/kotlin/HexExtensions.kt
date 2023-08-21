@@ -458,14 +458,18 @@ private fun String.checkNewLineAt(index: Int, endIndex: Int): Int {
  * @param format the [HexFormat] to use for formatting, [HexFormat.Default] by default.
  */
 public fun Byte.toHexString(format: HexFormat = HexFormat.Default): String {
-    // Optimize for the default format
-    if (format.number.isDefault) {
+    // Optimize for digits-only formats
+    val numberFormat = format.number
+    if (numberFormat.isDigitsOnly) {
         val charArray = CharArray(2)
         val digits = if (format.upperCase) UPPER_CASE_HEX_DIGITS else LOWER_CASE_HEX_DIGITS
         val value = this.toInt()
         charArray[0] = digits[(value shr 4) and 0xF]
         charArray[1] = digits[value and 0xF]
-        return charArray.concatToString()
+        return if (numberFormat.removeLeadingZeros)
+            charArray.concatToString(startIndex = (countLeadingZeroBits() shr 2).coerceAtMost(1))
+        else
+            charArray.concatToString()
     }
 
     return toLong().toHexStringImpl(format, bits = 8)
@@ -510,8 +514,9 @@ private fun String.hexToByte(startIndex: Int = 0, endIndex: Int = length, format
  * @param format the [HexFormat] to use for formatting, [HexFormat.Default] by default.
  */
 public fun Short.toHexString(format: HexFormat = HexFormat.Default): String {
-    // Optimize for the default format
-    if (format.number.isDefault) {
+    // Optimize for digits-only formats
+    val numberFormat = format.number
+    if (numberFormat.isDigitsOnly) {
         val charArray = CharArray(4)
         val digits = if (format.upperCase) UPPER_CASE_HEX_DIGITS else LOWER_CASE_HEX_DIGITS
         val value = this.toInt()
@@ -519,7 +524,10 @@ public fun Short.toHexString(format: HexFormat = HexFormat.Default): String {
         charArray[1] = digits[(value shr 8) and 0xF]
         charArray[2] = digits[(value shr 4) and 0xF]
         charArray[3] = digits[value and 0xF]
-        return charArray.concatToString()
+        return if (numberFormat.removeLeadingZeros)
+            charArray.concatToString(startIndex = (countLeadingZeroBits() shr 2).coerceAtMost(3))
+        else
+            charArray.concatToString()
     }
 
     return toLong().toHexStringImpl(format, bits = 16)
@@ -564,8 +572,9 @@ private fun String.hexToShort(startIndex: Int = 0, endIndex: Int = length, forma
  * @param format the [HexFormat] to use for formatting, [HexFormat.Default] by default.
  */
 public fun Int.toHexString(format: HexFormat = HexFormat.Default): String {
-    // Optimize for the default format
-    if (format.number.isDefault) {
+    // Optimize for digits-only formats
+    val numberFormat = format.number
+    if (numberFormat.isDigitsOnly) {
         val charArray = CharArray(8)
         val digits = if (format.upperCase) UPPER_CASE_HEX_DIGITS else LOWER_CASE_HEX_DIGITS
         val value = this
@@ -577,7 +586,10 @@ public fun Int.toHexString(format: HexFormat = HexFormat.Default): String {
         charArray[5] = digits[(value shr 8) and 0xF]
         charArray[6] = digits[(value shr 4) and 0xF]
         charArray[7] = digits[value and 0xF]
-        return charArray.concatToString()
+        return if (numberFormat.removeLeadingZeros)
+            charArray.concatToString(startIndex = (countLeadingZeroBits() shr 2).coerceAtMost(7))
+        else
+            charArray.concatToString()
     }
 
     return toLong().toHexStringImpl(format, bits = 32)
@@ -622,8 +634,9 @@ private fun String.hexToInt(startIndex: Int = 0, endIndex: Int = length, format:
  * @param format the [HexFormat] to use for formatting, [HexFormat.Default] by default.
  */
 public fun Long.toHexString(format: HexFormat = HexFormat.Default): String {
-    // Optimize for the default format
-    if (format.number.isDefault) {
+    // Optimize for digits-only formats
+    val numberFormat = format.number
+    if (numberFormat.isDigitsOnly) {
         val charArray = CharArray(16)
         val digits = if (format.upperCase) UPPER_CASE_HEX_DIGITS else LOWER_CASE_HEX_DIGITS
         val value = this
@@ -643,7 +656,10 @@ public fun Long.toHexString(format: HexFormat = HexFormat.Default): String {
         charArray[13] = digits[((value shr 8) and 0xF).toInt()]
         charArray[14] = digits[((value shr 4) and 0xF).toInt()]
         charArray[15] = digits[(value and 0xF).toInt()]
-        return charArray.concatToString()
+        return if (numberFormat.removeLeadingZeros)
+            charArray.concatToString(startIndex = (countLeadingZeroBits() shr 2).coerceAtMost(15))
+        else
+            charArray.concatToString()
     }
 
     return toHexStringImpl(format, bits = 64)
