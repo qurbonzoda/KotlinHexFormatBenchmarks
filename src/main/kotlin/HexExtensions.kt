@@ -736,7 +736,7 @@ private fun String.toCharArrayIfNotEmpty(destination: CharArray, destinationOffs
     return destinationOffset + length
 }
 
-private fun String.hexToIntImpl(startIndex: Int = 0, endIndex: Int = length, format: HexFormat, maxDigits: Int): Int {
+private fun String.hexToIntImpl(startIndex: Int, endIndex: Int, format: HexFormat, maxDigits: Int): Int {
     checkBoundsIndexes(startIndex, endIndex, length)
 
     val prefix = format.number.prefix
@@ -763,7 +763,7 @@ private fun String.hexToIntImpl(startIndex: Int = 0, endIndex: Int = length, for
     return result
 }
 
-private fun String.hexToLongImpl(startIndex: Int = 0, endIndex: Int = length, format: HexFormat, maxDigits: Int): Long {
+private fun String.hexToLongImpl(startIndex: Int, endIndex: Int, format: HexFormat, maxDigits: Int): Long {
     checkBoundsIndexes(startIndex, endIndex, length)
 
     val prefix = format.number.prefix
