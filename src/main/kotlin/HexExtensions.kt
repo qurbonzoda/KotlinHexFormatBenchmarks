@@ -747,7 +747,7 @@ private fun String.hexToIntImpl(startIndex: Int, endIndex: Int, format: HexForma
 
     // Optimize for digits-only formats
     val numberFormat = format.number
-    if (format.number.isDigitsOnly) {
+    if (numberFormat.isDigitsOnly) {
         checkMaxDigits(startIndex, endIndex, maxDigits)
         return parseInt(startIndex, endIndex)
     }
