@@ -1,0 +1,9 @@
+Benchmark                        (size)  Mode  Cnt   Score   Error  Units
+TheoriesBenchmark.sumIntsAnd7f      128  avgt   20  18.908 � 0.181  ns/op
+TheoriesBenchmark.sumIntsAnd7f      256  avgt   20  18.778 � 0.186  ns/op
+TheoriesBenchmark.sumIntsUshr8      128  avgt   20  18.450 � 0.246  ns/op
+TheoriesBenchmark.sumIntsUshr8      256  avgt   20  18.519 � 0.250  ns/op
+TheoriesBenchmark.sumLongsAnd7f     128  avgt   20  18.324 � 0.280  ns/op
+TheoriesBenchmark.sumLongsAnd7f     256  avgt   20  18.580 � 0.469  ns/op
+TheoriesBenchmark.sumLongsUshr8     128  avgt   20  17.890 � 0.279  ns/op
+TheoriesBenchmark.sumLongsUshr8     256  avgt   20  17.831 � 0.217  ns/op
