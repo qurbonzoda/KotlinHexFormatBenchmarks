@@ -53,6 +53,16 @@ benchmark {
             iterationTimeUnit = "s"
             reportFormat = "text"
         }
+
+        register("theories") {
+            include("TheoriesBenchmark")
+            warmups = 5
+            iterations = 20
+            iterationTime = 1
+            iterationTimeUnit = "s"
+            outputTimeUnit = "ns"
+            reportFormat = "text"
+        }
     }
     targets {
         register("main")
